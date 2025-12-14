@@ -1,7 +1,12 @@
 ---
-name: 🧪 Test Asset Crusher Logic
+name: 🧪 Asset Crusher (Surgical Mode)
 on:
   workflow_dispatch:
+  # push:
+  #   paths:
+  #     - '**.jpg'
+  #     - '**.png'
+  #     - '**.mp4'
 
 permissions:
   contents: write
@@ -11,7 +16,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Code
-        uses: actions/checkout@v6
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: 🛠 Install Dependencies
         run: |
@@ -20,38 +27,40 @@ jobs:
 
       - name: 🦾 Run Compression Logic
         run: |
-          echo "🔎 Starting the hunt for heavy assets..."
+          echo "🔎 Starting operation..."
+
+          HAS_CHANGES=false
 
           find . -type f \( -name "*.jpg" -o -name "*.jpeg" -o -name "*.png" \) -not -path "*/.git/*" | while read img; do
             echo "🔥 Crushing Image: $img"
-            
             cwebp -q 75 "$img" -o "${img%.*}.webp"
             
             rm "$img"
+            HAS_CHANGES=true
             echo "✅ Converted to ${img%.*}.webp"
           done
 
           find . -type f -name "*.mp4" -not -path "*/.git/*" | while read vid; do
             echo "🎬 Crushing Video: $vid"
-            
             mv "$vid" "temp_original.mp4"
-            
             ffmpeg -i "temp_original.mp4" -vcodec libx265 -crf 28 "$vid"
-            
             rm "temp_original.mp4"
-            echo "✅ Video Optimized: $vid"
+            HAS_CHANGES=true
+            echo "✅ Optimized Video: $vid"
           done
+          
+          echo "HAS_CHANGES=$HAS_CHANGES" >> $GITHUB_ENV
 
-      - name: 💾 Commit & Push Changes
+      - name: 💾 Amend Commit & Force Push
+        if: env.HAS_CHANGES == 'true'
         run: |
-          git config --global user.name "Crusher-Test-Bot"
+          git config --global user.name "Asset-Crusher-Bot"
           git config --global user.email "bot@test.com"
           
-          if [[ -n $(git status -s) ]]; then
-            git add .
-            git commit -m "📉 Assets Crushed via GitHub Actions [skip ci]"
-            git push
-            echo "🚀 Pushed optimized assets to repo."
-          else
-            echo "💤 No assets needed crushing."
-          fi
+          git add .
+          
+          git commit --amend --no-edit
+          
+          git push --force
+          
+          echo "🚀 Commit amended successfully. Original code is safe, heavy assets are gone."
