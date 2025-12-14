@@ -1,0 +1,57 @@
+---
+name: 🧪 Test Asset Crusher Logic
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  crush-assets:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v6
+
+      - name: 🛠 Install Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg webp
+
+      - name: 🦾 Run Compression Logic
+        run: |
+          echo "🔎 Starting the hunt for heavy assets..."
+
+          find . -type f \( -name "*.jpg" -o -name "*.jpeg" -o -name "*.png" \) -not -path "*/.git/*" | while read img; do
+            echo "🔥 Crushing Image: $img"
+            
+            cwebp -q 75 "$img" -o "${img%.*}.webp"
+            
+            rm "$img"
+            echo "✅ Converted to ${img%.*}.webp"
+          done
+
+          find . -type f -name "*.mp4" -not -path "*/.git/*" | while read vid; do
+            echo "🎬 Crushing Video: $vid"
+            
+            mv "$vid" "temp_original.mp4"
+            
+            ffmpeg -i "temp_original.mp4" -vcodec libx265 -crf 28 "$vid"
+            
+            rm "temp_original.mp4"
+            echo "✅ Video Optimized: $vid"
+          done
+
+      - name: 💾 Commit & Push Changes
+        run: |
+          git config --global user.name "Crusher-Test-Bot"
+          git config --global user.email "bot@test.com"
+          
+          if [[ -n $(git status -s) ]]; then
+            git add .
+            git commit -m "📉 Assets Crushed via GitHub Actions [skip ci]"
+            git push
+            echo "🚀 Pushed optimized assets to repo."
+          else
+            echo "💤 No assets needed crushing."
+          fi
