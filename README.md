@@ -51,7 +51,7 @@ jobs:
   crush:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           fetch-depth: 0 # CRITICAL for amending commits
 
@@ -81,7 +81,7 @@ jobs:
   optimize:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Run Asset Crusher
         uses: YOUR_USERNAME/asset-crusher@v1
