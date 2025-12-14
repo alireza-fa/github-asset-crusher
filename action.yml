@@ -1,6 +1,6 @@
 ---
 name: 'Asset Crusher'
-description: 'Automatically compresses images to WebP and optimizes videos using FFmpeg.'
+description: 'Compresses assets AND updates code references automatically.'
 author: 'Alireza Feizi'
 branding:
   icon: 'minimize-2'
@@ -13,14 +13,14 @@ inputs:
     default: '75'
   
   delete_original:
-    description: 'Delete original files and rewrite commit history (true/false)'
+    description: 'Delete original files & update code references'
     required: false
     default: 'true'
   
   commit_message:
-    description: 'Commit message for the optimized assets'
+    description: 'Commit message'
     required: false
-    default: 'chore: assets optimized via Asset Crusher 🤖'
+    default: 'chore: assets crushed & code refactored 🤖'
 
 runs:
   using: "composite"
@@ -31,42 +31,53 @@ runs:
         sudo apt-get update
         sudo apt-get install -y ffmpeg webp
 
-    - name: Run Compression Logic
+    - name: Run Compression & Refactor Logic
       shell: bash
       env:
         INPUT_QUALITY: ${{ inputs.quality }}
         INPUT_DELETE: ${{ inputs.delete_original }}
       run: |
-        echo "🔎 Starting compression with Quality: $INPUT_QUALITY | Delete Original: $INPUT_DELETE"
+        echo "🔎 Starting Asset Crusher with Auto-Refactor..."
+
+        SEARCH_EXTENSIONS="-name *.html -o -name *.css -o -name *.js -o -name *.jsx -o -name *.ts -o -name *.tsx -o -name *.vue -o -name *.svelte -o -name *.php -o -name *.md -o -name *.json"
 
         # --- IMAGES ---
         find . -type f \( -name "*.jpg" -o -name "*.jpeg" -o -name "*.png" \) -not -path "*/.git/*" | while read img; do
-          echo "🔥 Processing Image: $img"
+          echo "🔥 Processing: $img"
           
-          # Convert to WebP
-          cwebp -q "$INPUT_QUALITY" "$img" -o "${img%.*}.webp"
+          BASENAME=$(basename "$img")
+          DIRNAME=$(dirname "$img")
+          FILENAME_NO_EXT="${BASENAME%.*}"
+          NEW_NAME="$FILENAME_NO_EXT.webp"
+          FULL_NEW_PATH="$DIRNAME/$NEW_NAME"
+
+          cwebp -q "$INPUT_QUALITY" "$img" -o "$FULL_NEW_PATH"
           
-          # Logic for deletion
           if [ "$INPUT_DELETE" == "true" ]; then
+            
+            echo "   📝 Refactoring code references for $BASENAME..."
+                        
+            grep -rTl "$BASENAME" . --exclude-dir=.git | while read source_file; do
+               sed -i "s/$BASENAME/$NEW_NAME/g" "$source_file"
+               echo "      Start fixing: $source_file"
+            done
+
             rm "$img"
-            echo "✅ Converted & Deleted Original: ${img%.*}.webp"
+            echo "✅ Converted, Refactored & Deleted: $NEW_NAME"
           else
-            echo "✅ Converted (Original Kept): ${img%.*}.webp"
+            echo "✅ Converted (Safe Mode): $NEW_NAME"
           fi
         done
 
-        # --- VIDEOS ---
         find . -type f -name "*.mp4" -not -path "*/.git/*" | while read vid; do
           echo "🎬 Processing Video: $vid"
           
           if [ "$INPUT_DELETE" == "true" ]; then
-            # Overwrite mode
             mv "$vid" "temp_original.mp4"
             ffmpeg -i "temp_original.mp4" -vcodec libx265 -crf 28 "$vid" -y
             rm "temp_original.mp4"
             echo "✅ Video Optimized (Overwritten): $vid"
           else
-            # Safe mode (create new file)
             OUTPUT_NAME="${vid%.*}_optimized.mp4"
             ffmpeg -i "$vid" -vcodec libx265 -crf 28 "$OUTPUT_NAME" -y
             echo "✅ Video Optimized (New File): $OUTPUT_NAME"
@@ -92,12 +103,12 @@ runs:
             git commit --amend --no-edit
             git push --force
           else
-            echo "🛡️  Mode: Safe Commit (New Commit)"
+            echo "🛡️  Mode: Safe Commit"
             git commit -m "$MSG"
             git push
           fi
           
-          echo "✅ Assets successfully processed."
+          echo "✅ Assets & Code processed successfully."
         else
           echo "💤 No changes detected."
         fi
