@@ -1,0 +1,103 @@
+---
+name: 'Asset Crusher'
+description: 'Automatically compresses images to WebP and optimizes videos using FFmpeg.'
+author: 'Alireza Feizi'
+branding:
+  icon: 'minimize-2'
+  color: 'orange'
+
+inputs:
+  quality:
+    description: 'WebP compression quality (0-100)'
+    required: false
+    default: '75'
+  
+  delete_original:
+    description: 'Delete original files and rewrite commit history (true/false)'
+    required: false
+    default: 'true'
+  
+  commit_message:
+    description: 'Commit message for the optimized assets'
+    required: false
+    default: 'chore: assets optimized via Asset Crusher 🤖'
+
+runs:
+  using: "composite"
+  steps:
+    - name: Install Dependencies
+      shell: bash
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y ffmpeg webp
+
+    - name: Run Compression Logic
+      shell: bash
+      env:
+        INPUT_QUALITY: ${{ inputs.quality }}
+        INPUT_DELETE: ${{ inputs.delete_original }}
+      run: |
+        echo "🔎 Starting compression with Quality: $INPUT_QUALITY | Delete Original: $INPUT_DELETE"
+
+        # --- IMAGES ---
+        find . -type f \( -name "*.jpg" -o -name "*.jpeg" -o -name "*.png" \) -not -path "*/.git/*" | while read img; do
+          echo "🔥 Processing Image: $img"
+          
+          # Convert to WebP
+          cwebp -q "$INPUT_QUALITY" "$img" -o "${img%.*}.webp"
+          
+          # Logic for deletion
+          if [ "$INPUT_DELETE" == "true" ]; then
+            rm "$img"
+            echo "✅ Converted & Deleted Original: ${img%.*}.webp"
+          else
+            echo "✅ Converted (Original Kept): ${img%.*}.webp"
+          fi
+        done
+
+        # --- VIDEOS ---
+        find . -type f -name "*.mp4" -not -path "*/.git/*" | while read vid; do
+          echo "🎬 Processing Video: $vid"
+          
+          if [ "$INPUT_DELETE" == "true" ]; then
+            # Overwrite mode
+            mv "$vid" "temp_original.mp4"
+            ffmpeg -i "temp_original.mp4" -vcodec libx265 -crf 28 "$vid" -y
+            rm "temp_original.mp4"
+            echo "✅ Video Optimized (Overwritten): $vid"
+          else
+            # Safe mode (create new file)
+            OUTPUT_NAME="${vid%.*}_optimized.mp4"
+            ffmpeg -i "$vid" -vcodec libx265 -crf 28 "$OUTPUT_NAME" -y
+            echo "✅ Video Optimized (New File): $OUTPUT_NAME"
+          fi
+        done
+
+    - name: Commit Changes
+      shell: bash
+      env:
+        INPUT_DELETE: ${{ inputs.delete_original }}
+        MSG: ${{ inputs.commit_message }}
+      run: |
+        git config --global user.name "Asset-Crusher-Bot"
+        git config --global user.email "bot@asset-crusher.io"
+        
+        git add .
+        
+        if ! git diff --staged --quiet; then
+          echo "🚀 Changes detected..."
+          
+          if [ "$INPUT_DELETE" == "true" ]; then
+            echo "☢️  Mode: Rewrite History (Amend)"
+            git commit --amend --no-edit
+            git push --force
+          else
+            echo "🛡️  Mode: Safe Commit (New Commit)"
+            git commit -m "$MSG"
+            git push
+          fi
+          
+          echo "✅ Assets successfully processed."
+        else
+          echo "💤 No changes detected."
+        fi
